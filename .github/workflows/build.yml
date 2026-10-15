@@ -14,8 +14,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unzip project
-        run: unzip -q AnjooAI.zip
+      - name: Unzip newest project
+        run: |
+          ZIP=$(ls AnjooAI-v*.zip | sort -V | tail -1)
+          echo "Using $ZIP"
+          unzip -q "$ZIP"
 
       - uses: actions/setup-java@v4
         with:
