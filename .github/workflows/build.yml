@@ -23,26 +23,35 @@ jobs:
           ZIP=$(ls AnjooAI-v*.zip | sort -V | tail -1)
           echo "Using $ZIP"
           echo "ZIP_NAME=${ZIP%.zip}" >> "$GITHUB_ENV"
-          # -o = overwrite without asking, -x = never touch the workflow file
+          # -o = overwrite without asking, -x = never touch the repo's workflow file
           unzip -o -q "$ZIP" -x ".github/*"
+          # Zip may have everything inside an AnjooAI/ folder, or directly at root
+          if [ -d AnjooAI ] && [ -f AnjooAI/settings.gradle.kts ]; then
+            echo "PROJECT_DIR=AnjooAI" >> "$GITHUB_ENV"
+          else
+            echo "PROJECT_DIR=." >> "$GITHUB_ENV"
+          fi
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
-      - uses: android-actions/setup-android@v3
+      # Android SDK is already installed on ubuntu-latest, so no setup-android step.
+      - name: Accept Android licenses
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
 
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
 
       - name: Build debug APK
+        working-directory: ${{ env.PROJECT_DIR }}
         run: gradle assembleDebug --stacktrace
 
       - name: Rename APK
         run: |
-          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
+          APK=$(find "$PROJECT_DIR/app/build/outputs/apk/debug" -name '*.apk' | head -n 1)
           test -s "$APK" || { echo "APK missing or empty"; exit 1; }
           mkdir -p out
           cp "$APK" "out/${ZIP_NAME}.apk"
