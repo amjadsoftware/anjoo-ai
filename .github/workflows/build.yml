@@ -2,8 +2,11 @@ name: Build APK
 
 on:
   push:
-    branches: [main]
   workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: write
@@ -11,6 +14,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -18,27 +22,37 @@ jobs:
         run: |
           ZIP=$(ls AnjooAI-v*.zip | sort -V | tail -1)
           echo "Using $ZIP"
-          unzip -q "$ZIP"
+          echo "ZIP_NAME=${ZIP%.zip}" >> "$GITHUB_ENV"
+          # -o = overwrite without asking, -x = never touch the workflow file
+          unzip -o -q "$ZIP" -x ".github/*"
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
 
+      - uses: android-actions/setup-android@v3
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.7
 
       - name: Build debug APK
-        working-directory: AnjooAI
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug --stacktrace
 
       - name: Rename APK
-        run: cp AnjooAI/app/build/outputs/apk/debug/app-debug.apk AnjooAI.apk
+        run: |
+          APK=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
+          test -s "$APK" || { echo "APK missing or empty"; exit 1; }
+          mkdir -p out
+          cp "$APK" "out/${ZIP_NAME}.apk"
+          ls -l out
 
       - name: Publish APK as a release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: apk-${{ github.run_number }}
-          name: Anjoo AI APK ${{ github.run_number }}
-          files: AnjooAI.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${ZIP_NAME}-build${{ github.run_number }}"
+          gh release create "$TAG" "out/${ZIP_NAME}.apk" \
+            --title "$ZIP_NAME" \
+            --notes "Auto-built from ${ZIP_NAME}.zip"
