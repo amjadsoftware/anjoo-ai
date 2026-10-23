@@ -47,7 +47,19 @@ jobs:
 
       - name: Build debug APK
         working-directory: ${{ env.PROJECT_DIR }}
-        run: gradle assembleDebug --stacktrace
+        run: |
+          set -o pipefail
+          gradle assembleDebug --console=plain 2>&1 | tee "$GITHUB_WORKSPACE/build.log"
+
+      - name: Show short error summary
+        if: failure()
+        run: |
+          {
+            echo "## Build errors"
+            echo '```'
+            grep -n -E "^e: |What went wrong|Execution failed|AAPT|error:|Could not (resolve|find)|Unresolved reference|Duplicate" build.log | head -40
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Rename APK
         run: |
